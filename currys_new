@@ -1,0 +1,109 @@
+from selenium import webdriver as wd
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+import requests
+import re
+import time
+from selenium.webdriver.chrome.options import Options
+from bs4 import BeautifulSoup
+import pandas as pd
+
+options = Options()
+
+# chrome을 전체화면으로 넓히는 옵션입니다.
+
+options.add_argument('headless')
+options.add_argument('window-size=1920x1080')
+options.add_argument("disable-gpu")
+# driver=wd.Chrome(executable_path = 'chromedriver.exe',chrome_options=options)
+driver=wd.Chrome(executable_path ='C:/chromedriver.exe',chrome_options=options)
+
+#제품 URL 기입
+#url='https://www.currys.co.uk/gbuk/audio-and-headphones/audio/hifi-systems-and-speakers/lg-pk3-xboom-go-portable-bluetooth-speaker-black-10181809-pdt.html#srcid=11026'
+#url='https://www.currys.co.uk/gbuk/audio-and-headphones/audio/hifi-systems-and-speakers/lg-pk5-xboom-go-portable-bluetooth-speaker-black-10180615-pdt.html?intcmpid=display~RR'
+url='https://www.currys.co.uk/gbuk/audio-and-headphones/audio/hifi-systems-and-speakers/lg-pk7-xboom-go-portable-bluetooth-speaker-black-10180616-pdt.html#srcid=11026'
+#url='https://www.currys.co.uk/gbuk/audio-and-headphones/audio/hifi-systems-and-speakers/sony-srs-xb41-portable-bluetooth-speaker-black-10178881-pdt.html#srcid=11026'
+#url='https://www.currys.co.uk/gbuk/audio-and-headphones/audio/hifi-systems-and-speakers/sony-srs-xb31-portable-bluetooth-wireless-speaker-black-10178879-pdt.html'
+#url='https://www.currys.co.uk/gbuk/audio-and-headphones/audio/hifi-systems-and-speakers/sony-srs-xb21-portable-bluetooth-wireless-speaker-black-10178872-pdt.html'
+try:
+    driver.get(url)
+    driver.implicitly_wait(10)
+    driver.find_element_by_xpath("//*[@id='product-tabs']/div[1]/a[3]").click()
+    try:
+        WebDriverWait(driver, 35).until(
+            # 지정한 한개 요소가 올라면 웨이트 종료
+            EC.presence_of_element_located( (By.CLASS_NAME, 'pagination'))
+        )
+    except Exception as e:
+        print( '오류 발생', e)
+
+    total_reviews=driver.page_source
+    ttl_reviewsj=BeautifulSoup(total_reviews,"html.parser")
+    number_of_reviews=ttl_reviewsj.find("h3",{'class':"filtered-count summary"})
+    abc=number_of_reviews.text.split()
+    reviews_total=int(abc[0])
+    
+    product_name=ttl_reviewsj.find('span',{'class':'product_name'})
+    productName=product_name.text
+    
+    score_list=[]
+    date_list=[]
+    pros_list=[]
+    cons_list=[]
+    while len(score_list)<=reviews_total:
+
+        bsobj=driver.page_source
+        bs_obj=BeautifulSoup(bsobj,"html.parser")
+
+        score=bs_obj.findAll('div',{"class":"overall_score_stars"})  
+        for i in range(len(score)):
+            score_list.append(score[i].text)
+
+        Date=bs_obj.findAll('span',{'class':"date date_publish"})
+        for j in range(len(Date)):
+            date_list.append(Date[j].text.strip())
+
+        pros=bs_obj.findAll('dd',{'class':'pros'})
+        for k in range(len(pros)):
+            pros_list.append(pros[k].text)
+
+        cons=bs_obj.findAll('dd',{'class':'cons'})
+        for h in range(len(cons)):
+            cons_list.append(cons[h].text)
+
+        driver.find_element_by_class_name('next_page').click()
+        try:
+            WebDriverWait(driver, 35).until(
+            # 지정한 한개 요소가 올라면 웨이트 종료
+                EC.presence_of_element_located( (By.CLASS_NAME, 'pagination'))
+            )
+        except Exception as e:
+            print( '오류 발생', e)
+        time.sleep(3)
+except: 
+    driver.close()
+    driver.quit()
+
+
+
+
+score_final=[]
+for u in score_list:
+    numbers = re.findall("\d+", u)
+    score_final.append(numbers[0])
+
+a= pd.DataFrame(score_final,columns=['Rating'])
+b=pd.DataFrame(date_list,columns=['Date'])
+c=pd.DataFrame(pros_list,columns=['Pros'])
+d=pd.DataFrame(cons_list,columns=['Cons'])
+e=pd.concat([a,b,c,d],axis=1)
+
+import os
+
+#파일 저장 경로 설정
+os.chdir('Z:/2019 LGE HE CAV 모니터링 업무/11. KPI 실적/4월/Raw/11. 거래선 리뷰')
+#파일 이름 설정
+writer=pd.ExcelWriter('%s 4월.xlsx'%productName,engine='xlsxwriter')
+e.to_excel(writer,sheet_name=productName[:15])
+writer.save()
